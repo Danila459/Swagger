@@ -1,0 +1,701 @@
+openapi: 3.0.3
+info:
+  title: API для управления пользователями
+  description: |
+    ## Усовершенствованная система управления пользователями
+    Позволяет:
+    - Полноценное управление учетными записями (CRUD)
+    - Работу с ролями и разрешениями
+    - Восстановление паролей
+    - Управление аватарами пользователей
+    - Получение аналитики активности
+  version: 2.1.0
+  contact:
+    name: API Support Team
+    email: api-support@company.com
+    url: https://support.company.com/api
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: https://company.com/terms
+  x-logo:
+    url: https://company.com/logo.png
+    altText: Company Logo
+
+servers:
+  - url: https://api.company.com/v2
+    description: Продакшен сервер
+    variables:
+      environment:
+        default: production
+        enum: [production, staging]
+      port:
+        default: "443"
+  - url: https://sandbox.company.com/v2
+    description: Тестовое окружение
+  - url: http://localhost:8080/v2
+    description: Локальная разработка
+
+tags:
+  - name: Users
+    description: Операции с пользователями
+    externalDocs:
+      description: Подробнее о пользователях
+      url: https://docs.company.com/users
+  - name: Auth
+    description: Аутентификация и авторизация
+  - name: Files
+    description: Работа с файлами (аватарки)
+  - name: Analytics
+    description: Статистика и аналитика
+  - name: Admin
+    description: Администрирование системы
+
+paths:
+  /users:
+    get:
+      tags: [Users]
+      summary: Фильтруемый список пользователей
+      description: |
+        Возвращает пагинированный список пользователей с возможностью фильтрации.
+        Поддерживает сортировку по различным полям.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - $ref: '#/components/parameters/filterByRole'
+        - $ref: '#/components/parameters/sortBy'
+        - $ref: '#/components/parameters/searchQuery'
+      responses:
+        200:
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+              examples:
+                basic:
+                  value:
+                    data:
+                      - id: 1
+                        username: "john_doe"
+                        email: "john@example.com"
+                        role: "admin"
+                      - id: 2
+                        username: "jane_doe"
+                        email: "jane@example.com"
+                        role: "user"
+                    meta:
+                      totalItems: 42
+                      currentPage: 1
+                      pageSize: 2
+                      totalPages: 21
+                filtered:
+                  value:
+                    data:
+                      - id: 3
+                        username: "test_user"
+                        email: "test@example.com"
+                        role: "user"
+                    meta:
+                      totalItems: 1
+                      currentPage: 1
+                      pageSize: 10
+                      totalPages: 1
+        400:
+          $ref: '#/components/responses/BadRequest'
+        401:
+          $ref: '#/components/responses/Unauthorized'
+        403:
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Users]
+      summary: Создание нового пользователя
+      description: Создает новую учетную запись пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            example:
+              username: "new_user"
+              email: "user@example.com"
+              password: "Str0ngP@ss!"
+              role: "user"
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        201:
+          description: Пользователь успешно создан
+          headers:
+            Location:
+              description: URL нового пользователя
+              schema:
+                type: string
+              example: "/users/123"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        422:
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/userId'
+    get:
+      tags: [Users]
+      summary: Полная информация о пользователе
+      description: Возвращает полную информацию о конкретном пользователе
+      responses:
+        200:
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        404:
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Users]
+      summary: Полное обновление пользователя
+      description: Заменяет все данные пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        200:
+          description: Пользователь обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          $ref: '#/components/responses/BadRequest'
+    patch:
+      tags: [Users]
+      summary: Частичное обновление пользователя
+      description: Обновляет только указанные поля пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchUserRequest'
+      responses:
+        200:
+          description: Пользователь обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    delete:
+      tags: [Users]
+      summary: Удаление пользователя
+      description: Удаляет учетную запись пользователя
+      responses:
+        204:
+          description: Пользователь удален
+        404:
+          $ref: '#/components/responses/NotFound'
+
+  /users/{id}/avatar:
+    parameters:
+      - $ref: '#/components/parameters/userId'
+    post:
+      tags: [Files, Users]
+      summary: Загрузка аватарки пользователя
+      description: Загружает изображение для аватарки пользователя
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Файл изображения (JPG/PNG)
+      responses:
+        200:
+          description: Аватар успешно загружен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarResponse'
+        400:
+          description: Неверный формат файла
+    get:
+      tags: [Files, Users]
+      summary: Получение аватарки пользователя
+      description: Возвращает URL аватарки пользователя
+      responses:
+        200:
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarResponse'
+        404:
+          description: Аватар не найден
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Аутентификация пользователя
+      description: Вход в систему с email и паролем
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        200:
+          description: Успешная аутентификация
+          headers:
+            Authorization:
+              description: JWT токен
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        401:
+          description: Неверные учетные данные
+
+  /auth/password-reset:
+    post:
+      tags: [Auth]
+      summary: Запрос сброса пароля
+      description: Инициирует процесс сброса пароля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        202:
+          description: Запрос принят
+    patch:
+      tags: [Auth]
+      summary: Установка нового пароля
+      description: Завершает процесс сброса пароля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPasswordRequest'
+      responses:
+        200:
+          description: Пароль успешно изменен
+
+  /analytics/activity:
+    get:
+      tags: [Analytics]
+      summary: Статистика активности пользователей
+      description: Возвращает аналитику по активности пользователей
+      security:
+        - api_key: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+        - $ref: '#/components/parameters/groupBy'
+      responses:
+        200:
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityStats'
+
+components:
+  schemas:
+    User:
+      type: object
+      required: [id, username, email, role]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+          readOnly: true
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        role:
+          type: string
+          enum: [admin, moderator, user]
+          default: "user"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2023-01-01T12:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2023-01-02T10:30:00Z"
+        isActive:
+          type: boolean
+          default: true
+
+    UserDetails:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            lastLogin:
+              type: string
+              format: date-time
+              nullable: true
+            loginCount:
+              type: integer
+              default: 0
+
+    UserList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    CreateUserRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          format: password
+        role:
+          type: string
+          enum: [admin, moderator, user]
+          default: "user"
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, moderator, user]
+
+    PatchUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        role:
+          type: string
+          enum: [admin, moderator, user]
+          nullable: true
+        isActive:
+          type: boolean
+          nullable: true
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT токен
+        expiresIn:
+          type: integer
+          description: Время жизни токена (секунды)
+        user:
+          $ref: '#/components/schemas/User'
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    NewPasswordRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+
+    AvatarResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "https://storage.company.com/avatars/user123.jpg"
+        thumbnailUrl:
+          type: string
+          format: uri
+          example: "https://storage.company.com/avatars/user123_thumb.jpg"
+
+    ActivityStats:
+      type: object
+      properties:
+        period:
+          type: string
+          example: "2023-01"
+        activeUsers:
+          type: integer
+        newUsers:
+          type: integer
+        loginCount:
+          type: integer
+        byDay:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Validation failed"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    PaginationMeta:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 100
+        currentPage:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 10
+        totalPages:
+          type: integer
+          example: 10
+        hasNext:
+          type: boolean
+          example: true
+        hasPrev:
+          type: boolean
+          example: false
+
+  parameters:
+    userId:
+      name: id
+      in: path
+      required: true
+      description: ID пользователя
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 123
+
+    page:
+      name: page
+      in: query
+      description: Номер страницы
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    pageSize:
+      name: pageSize
+      in: query
+      description: Количество элементов на странице
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      example: 10
+
+    filterByRole:
+      name: role
+      in: query
+      description: Фильтр по роли пользователя
+      schema:
+        type: string
+        enum: [admin, moderator, user]
+      required: false
+
+    sortBy:
+      name: sort
+      in: query
+      description: Поле для сортировки
+      schema:
+        type: string
+        enum: [username, email, createdAt]
+        default: "createdAt"
+      required: false
+
+    searchQuery:
+      name: q
+      in: query
+      description: Поисковый запрос
+      schema:
+        type: string
+      required: false
+
+    dateFrom:
+      name: from
+      in: query
+      description: Начальная дата периода
+      schema:
+        type: string
+        format: date
+      required: false
+
+    dateTo:
+      name: to
+      in: query
+      description: Конечная дата периода
+      schema:
+        type: string
+        format: date
+      required: false
+
+    groupBy:
+      name: group
+      in: query
+      description: Группировка данных
+      schema:
+        type: string
+        enum: [day, week, month]
+        default: "day"
+      required: false
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Authentication required"
+
+    Forbidden:
+      description: Доступ запрещен
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Insufficient permissions"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "User not found"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Введите JWT токен в формате `Bearer <token>`
+        Получить токен можно через эндпоинт `/auth/login`
+
+    api_key:
+      type: apiKey
+      name: X-API-KEY
+      in: header
+      description: API ключ для сервисного доступа
+
+security:
+  - BearerAuth: []
